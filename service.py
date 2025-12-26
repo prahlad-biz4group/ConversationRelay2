@@ -1,15 +1,13 @@
 import asyncio
 import os
-import uuid
 
 from fastapi import FastAPI, WebSocket
 from starlette.responses import HTMLResponse
+from openai import AsyncOpenAI
 
 import bentoml
-from bentoml.models import HuggingFaceModel
 
 
-MAX_TOKENS = 8192
 MAX_NEW_TOKENS = 2048
 SYSTEM_PROMPT = """You are a helpful, respectful and honest assistant. You can hear and speak. You are chatting with a user over voice. Your voice and personality should be warm and engaging, with a lively and playful tone, full of charm and energy. The content of your responses should be conversational, nonjudgmental, and friendly.
 
@@ -17,10 +15,15 @@ Always answer as helpfully as possible, while being safe. Your answers should no
 
 If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."""
 
-MODEL_ID = "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
+OPENAI_MODEL = "gpt-4o"
 
 
 app = FastAPI()
+
+@app.get('/healthcheck')
+def health_check():
+    print("Health Check Hitted......")
+    return {"success": True, "message": "Working fine."}
 
 @app.post("/start_call")
 async def start_call():
@@ -42,28 +45,15 @@ async def start_call():
 
 @bentoml.service(
     traffic={"timeout": 360},
-    resources={
-        "gpu": 1,
-        "gpu_type": "nvidia-a100-80gb",
-    },
 )
 @bentoml.mount_asgi_app(app, path="/chat")
 class TwilioChatBot:
 
-    model_ref = HuggingFaceModel(MODEL_ID)
-
     def __init__(self):
-        from transformers import AutoTokenizer
-        from vllm import AsyncEngineArgs, AsyncLLMEngine
-
-        engine_args = AsyncEngineArgs(
-            model=self.model_ref,
-            max_model_len=MAX_TOKENS,
-            enable_prefix_caching=True,
-        )
-
-        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_ref)
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        self.client = AsyncOpenAI(api_key=api_key)
 
 
     @app.websocket("/ws")
@@ -79,46 +69,53 @@ class TwilioChatBot:
         # the message history. This function could be canceled by user
         # interruption.
         async def llm_request(message):
-            from vllm import SamplingParams
-
-            sampling_param = SamplingParams(max_tokens=MAX_NEW_TOKENS)
-            prompt = self.tokenizer.apply_chat_template(
-                messages + [dict(role="user", content=message)],
-                tokenize=False, add_generation_prompt=True,
-            )
-            request_id = uuid.uuid4().hex
             replies = []
+            print(f"[DEBUG] Starting LLM request for message: {message}")
 
             try:
-                stream = await self.engine.add_request(
-                    request_id, prompt, sampling_param
+                print(f"[DEBUG] Calling OpenAI API with model: {OPENAI_MODEL}")
+                print(f"[DEBUG] Messages to send: {len(messages + [dict(role='user', content=message)])} messages")
+                
+                stream = await self.client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    messages=messages + [dict(role="user", content=message)],
+                    max_tokens=MAX_NEW_TOKENS,
+                    stream=True,
                 )
 
-                cursor = 0
-                async for request_output in stream:
-                    text = request_output.outputs[0].text
-                    out = text[cursor:]
-                    replies.append(out)
+                print("[DEBUG] Streaming response from OpenAI...")
+                chunk_count = 0
+                async for chunk in stream:
+                    chunk_count += 1
+                    if chunk.choices[0].delta.content:
+                        out = chunk.choices[0].delta.content
+                        replies.append(out)
+                        print(f"[DEBUG] Received chunk {chunk_count}: {repr(out)}")
 
-                    out_d = {
-                        "type": "text",
-                        "token": out,
-                        "last": False,
-                    }
-                    await websocket.send_json(out_d)
-                    cursor = len(text)
+                        out_d = {
+                            "type": "text",
+                            "token": out,
+                            "last": False,
+                        }
+                        await websocket.send_json(out_d)
+                
+                print(f"[DEBUG] Finished streaming. Total chunks: {chunk_count}, Total reply length: {len(''.join(replies))}")
 
             except asyncio.CancelledError:
-                await self.engine.abort(request_id)
+                print("[DEBUG] LLM request cancelled")
                 raise
+            except Exception as e:
+                print(f"[ERROR] Exception in llm_request: {type(e).__name__}: {e}")
+                import traceback
+                print("[ERROR] Full traceback:")
+                traceback.print_exc()
 
             finally:
-
-                # update both Q&A message history in finally block to make it atomic
                 reply = "".join(replies)
                 messages.append(dict(role="user", content=message))
                 messages.append(dict(role="assistant", content=reply))
-                print(messages)
+                print(f"[DEBUG] Full reply: {reply}")
+                print(f"[DEBUG] Message history: {messages}")
 
                 last_d = {
                     "type": "text",
@@ -150,12 +147,14 @@ class TwilioChatBot:
 
             while True:
                 data = await queue.get()
+                print(f"[DEBUG] Received data: {data}")
                 if data["type"] == "prompt":
                     input_buffer.append(data["voicePrompt"])
                     if data["last"]:
                         message = " ".join(input_buffer)
                         input_buffer = []
                         await stop_llm_task()
+                        print(f"[DEBUG] Creating LLM task for message: {message}")
                         llm_task = asyncio.create_task(llm_request(message))
 
                 elif data["type"] == "interrupt":
