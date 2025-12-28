@@ -51,7 +51,7 @@ async def send_message(message: str):
             
             return full_response
             
-    except ConnectionRefusedError:
+    except ConnectionRefusedError: 
         print("\n❌ Connection refused! Make sure BentoML is running:")
         print("   bentoml serve .")
         return None
