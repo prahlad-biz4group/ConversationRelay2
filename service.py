@@ -15,7 +15,7 @@ Always answer as helpfully as possible, while being safe. Your answers should no
 
 If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."""
 
-OPENAI_MODEL = "gpt-4o"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 app = FastAPI()
@@ -50,10 +50,13 @@ async def start_call():
 class TwilioChatBot:
 
     def __init__(self):
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = "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"
         if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-        self.client = AsyncOpenAI(api_key=api_key)
+            raise ValueError("GROQ_API_KEY environment variable is required")
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
 
 
     @app.websocket("/ws")
@@ -73,11 +76,11 @@ class TwilioChatBot:
             print(f"[DEBUG] Starting LLM request for message: {message}")
 
             try:
-                print(f"[DEBUG] Calling OpenAI API with model: {OPENAI_MODEL}")
+                print(f"[DEBUG] Calling Groq API with model: {GROQ_MODEL}")
                 print(f"[DEBUG] Messages to send: {len(messages + [dict(role='user', content=message)])} messages")
                 
                 stream = await self.client.chat.completions.create(
-                    model=OPENAI_MODEL,
+                    model=GROQ_MODEL,
                     messages=messages + [dict(role="user", content=message)],
                     max_tokens=MAX_NEW_TOKENS,
                     stream=True,
