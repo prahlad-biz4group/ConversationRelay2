@@ -78,7 +78,7 @@ async def start_call():
 class TwilioChatBot:
 
     def __init__(self):
-        api_key = "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"
+        api_key = "GROK API KEY HERE"
         if not api_key:
             raise ValueError("GROQ_API_KEY environment variable is required")
         self.client = AsyncOpenAI(
