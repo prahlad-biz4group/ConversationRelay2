@@ -13,7 +13,26 @@ SYSTEM_PROMPT = """You are a helpful, respectful and honest assistant. You can h
 
 Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
 
-If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."""
+If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.
+
+CRITICAL - Interruption Handling Rules:
+You are in a real-time voice conversation. The user can interrupt you at any moment. Here's how to respond:
+
+1. If user says ONLY "stop", "wait", "hold on", "pause", "hold", or "enough" (just the word alone):
+   → Respond with ONE brief sentence: "Sure, I stopped. What would you like to know?"
+   → DO NOT elaborate, DO NOT continue talking, just that one sentence.
+
+2. If user interrupts with an ACTUAL QUESTION or NEW TOPIC (like "tell me about Python", "what about India", "how does that work"):
+   → Immediately answer their question directly
+   → DO NOT say "what do you want" or "how can I help"
+   → Just smoothly answer what they asked
+
+Examples:
+- User says "stop" → You say: "Sure, I stopped. What would you like to know?"
+- User says "tell me about yourself" → You immediately start: "I'm an AI assistant designed to..."
+- User says "what about Python?" → You immediately start: "Python is a programming language..."
+
+Always maintain conversation context. Be smart about detecting if it's a stop command vs a real question."""
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
@@ -25,10 +44,19 @@ def health_check():
     print("Health Check Hitted......")
     return {"success": True, "message": "Working fine."}
 
+@app.get('/test')
+async def serve_test_ui():
+    """Serve the test UI for WebSocket testing"""
+    from pathlib import Path
+    html_path = Path(__file__).parent / "test_ui.html"
+    with open(html_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content)
+
 @app.post("/start_call")
 async def start_call():
     print("POST TwiML")
-    service_url = os.environ.get("BENTOCLOUD_DEPLOYMENT_URL")
+    service_url = "localhost:3000"
     assert(service_url)
     if service_url.startswith("http"):
         from urllib.parse import urlparse
@@ -50,7 +78,7 @@ async def start_call():
 class TwilioChatBot:
 
     def __init__(self):
-        api_key = "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"
+        api_key = "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"
         if not api_key:
             raise ValueError("GROQ_API_KEY environment variable is required")
         self.client = AsyncOpenAI(
@@ -86,7 +114,7 @@ class TwilioChatBot:
                     stream=True,
                 )
 
-                print("[DEBUG] Streaming response from OpenAI...")
+                print("[DEBUG] Streaming response from Groq...")
                 chunk_count = 0
                 async for chunk in stream:
                     chunk_count += 1
@@ -95,12 +123,18 @@ class TwilioChatBot:
                         replies.append(out)
                         print(f"[DEBUG] Received chunk {chunk_count}: {repr(out)}")
 
+                        # Send chunks as-is for Twilio TTS
+                        # Twilio handles the voice pacing, we just need smooth delivery
                         out_d = {
                             "type": "text",
                             "token": out,
                             "last": False,
                         }
                         await websocket.send_json(out_d)
+                        
+                        # Small delay to prevent overwhelming Twilio's TTS engine
+                        # This allows TTS to process chunks smoothly without buffering issues
+                        await asyncio.sleep(0.059)
                 
                 print(f"[DEBUG] Finished streaming. Total chunks: {chunk_count}, Total reply length: {len(''.join(replies))}")
 
@@ -163,5 +197,6 @@ class TwilioChatBot:
                 elif data["type"] == "interrupt":
                     input_buffer = []
                     await stop_llm_task()
+                    print("[DEBUG] User interrupted - waiting for next message")
 
         await asyncio.gather(read_from_socket(websocket), get_data_and_process())

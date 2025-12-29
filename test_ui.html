@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Chatbot Test UI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            height: 100vh;
+            display: flex;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* Chat Section */
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1e293b;
+            border-right: 2px solid #334155;
+            color: #e2e8f0;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: #0f172a;
+            border-bottom: 2px solid #06b6d4;
+        }
+
+        .chat-header h1 {
+            font-size: 24px;
+            color: #06b6d4;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .status-indicator.connected {
+            background: #06b6d4;
+            box-shadow: 0 0 10px #06b6d4;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            display: flex;
+            flex-direction: column;
+            max-width: 70%;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: #06b6d4;
+            color: #0f172a;
+        }
+
+        .message.assistant .message-content {
+            background: #334155;
+            color: #e2e8f0;
+            border: 1px solid #475569;
+        }
+
+        .message.assistant.streaming .message-content {
+            border-color: #06b6d4;
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        }
+
+        .message-label {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 5px;
+            padding: 0 5px;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 12px 16px;
+            background: #334155;
+            border-radius: 12px;
+            width: fit-content;
+        }
+
+        .typing-indicator.active {
+            display: block;
+        }
+
+        .typing-indicator span {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #06b6d4;
+            margin: 0 2px;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .typing-indicator span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+
+        @keyframes bounce {
+            0%, 80%, 100% {
+                transform: scale(0);
+            }
+            40% {
+                transform: scale(1);
+            }
+        }
+
+        .chat-input-container {
+            padding: 20px;
+            background: #0f172a;
+            border-top: 2px solid #334155;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            background: #1e293b;
+            color: #e2e8f0;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input:focus {
+            border-color: #06b6d4;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .btn-send {
+            background: #06b6d4;
+            color: #0f172a;
+        }
+
+        .btn-send:hover {
+            background: #0891b2;
+            transform: translateY(-2px);
+        }
+
+        .btn-send:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-interrupt {
+            background: #f59e0b;
+            color: #0f172a;
+        }
+
+        .btn-interrupt:hover {
+            background: #d97706;
+        }
+
+        .btn-interrupt:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+
+        /* Events Section */
+        .events-section {
+            width: 400px;
+            display: flex;
+            flex-direction: column;
+            background: #1e293b;
+        }
+
+        .events-header {
+            padding: 20px;
+            background: #0f172a;
+            border-bottom: 2px solid #06b6d4;
+        }
+
+        .events-header h2 {
+            font-size: 18px;
+            color: #06b6d4;
+        }
+
+        .events-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-clear {
+            padding: 8px 16px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-clear:hover {
+            background: #cc0000;
+        }
+
+        .events-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 10px;
+        }
+
+        .event-item {
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            border-left: 3px solid;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .event-item.outgoing {
+            background: rgba(6, 182, 212, 0.1);
+            border-color: #06b6d4;
+        }
+
+        .event-item.incoming {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: #22c55e;
+        }
+
+        .event-item.system {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: #f59e0b;
+        }
+
+        .event-timestamp {
+            color: #888;
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+
+        .event-type {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .event-data {
+            color: #ccc;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #06b6d4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Chat Section -->
+        <div class="chat-section">
+            <div class="chat-header">
+                <h1>🤖 Voice Chatbot Test</h1>
+                <div class="connection-status">
+                    <div class="status-indicator" id="statusIndicator"></div>
+                    <span id="statusText">Disconnected</span>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant">
+                    <div class="message-label">Assistant</div>
+                    <div class="message-content">
+                        Hi! I'm your AI assistant. Type a message to start chatting. You can interrupt me anytime while I'm responding!
+                    </div>
+                </div>
+            </div>
+
+            <div class="typing-indicator" id="typingIndicator">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <input 
+                        type="text" 
+                        class="chat-input" 
+                        id="messageInput" 
+                        placeholder="Type your message..."
+                        autocomplete="off"
+                    >
+                    <button class="btn btn-send" id="sendBtn">Send</button>
+                    <button class="btn btn-interrupt" id="interruptBtn" disabled>Stop</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Events Section -->
+        <div class="events-section">
+            <div class="events-header">
+                <h2>📡 Event Monitor</h2>
+                <div class="events-controls">
+                    <button class="btn-clear" id="clearEventsBtn">Clear Events</button>
+                </div>
+            </div>
+            <div class="events-list" id="eventsList"></div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        let ws = null;
+        let isStreaming = false;
+        let currentAssistantMessage = null;
+        let currentMessageContent = '';
+
+        // DOM elements
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const interruptBtn = document.getElementById('interruptBtn');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const eventsList = document.getElementById('eventsList');
+        const clearEventsBtn = document.getElementById('clearEventsBtn');
+
+        // Connect to WebSocket
+        function connect() {
+            const wsUrl = 'ws://localhost:3000/chat/ws';
+            logEvent('system', 'Connecting', { url: wsUrl });
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusIndicator.classList.add('connected');
+                statusText.textContent = 'Connected';
+                logEvent('system', 'Connected', { status: 'WebSocket connection established' });
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                // Only log major events, not every token chunk
+                handleIncomingMessage(data);
+            };
+
+            ws.onerror = (error) => {
+                logEvent('system', 'Error', { error: error.message || 'WebSocket error' });
+            };
+
+            ws.onclose = () => {
+                statusIndicator.classList.remove('connected');
+                statusText.textContent = 'Disconnected';
+                logEvent('system', 'Disconnected', { status: 'WebSocket connection closed' });
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+        }
+
+        // Handle incoming messages (optimized for Twilio TTS flow)
+        function handleIncomingMessage(data) {
+            if (data.type === 'text') {
+                if (!isStreaming && data.token) {
+                    // Start new assistant message
+                    isStreaming = true;
+                    currentMessageContent = '';
+                    interruptBtn.disabled = false;
+                    typingIndicator.classList.remove('active');
+                    
+                    currentAssistantMessage = createMessage('assistant', '', true);
+                    
+                    // Log stream start event
+                    logEvent('incoming', 'Stream Started', { type: 'text', status: 'streaming' });
+                }
+
+                if (data.token) {
+                    // Display chunks immediately (simulates Twilio TTS behavior)
+                    currentMessageContent += data.token;
+                    updateMessageContent(currentAssistantMessage, currentMessageContent);
+                }
+
+                if (data.last) {
+                    // Streaming finished
+                    isStreaming = false;
+                    interruptBtn.disabled = true;
+                    if (currentAssistantMessage) {
+                        currentAssistantMessage.classList.remove('streaming');
+                    }
+                    
+                    // Log stream end event
+                    logEvent('incoming', 'Stream Ended', { type: 'text', last: true, length: currentMessageContent.length });
+                }
+            }
+        }
+
+        // Send message
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+            // If currently streaming, send interrupt first
+            if (isStreaming) {
+                sendInterrupt();
+            }
+
+            // Display user message
+            createMessage('user', message);
+            messageInput.value = '';
+
+            // Send prompt event
+            const promptEvent = {
+                type: 'prompt',
+                voicePrompt: message,
+                last: true
+            };
+
+            ws.send(JSON.stringify(promptEvent));
+            logEvent('outgoing', 'Prompt Sent', promptEvent);
+
+            // Show typing indicator
+            typingIndicator.classList.add('active');
+        }
+
+        // Send interrupt
+        function sendInterrupt() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+            const interruptEvent = {
+                type: 'interrupt'
+            };
+
+            ws.send(JSON.stringify(interruptEvent));
+            logEvent('system', '⚠️ Interruption', { action: 'Stream interrupted by user', type: 'interrupt' });
+
+            isStreaming = false;
+            interruptBtn.disabled = true;
+            typingIndicator.classList.remove('active');
+            
+            if (currentAssistantMessage) {
+                currentAssistantMessage.classList.remove('streaming');
+            }
+        }
+
+        // Create message element
+        function createMessage(role, content, streaming = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            if (streaming) messageDiv.classList.add('streaming');
+
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.textContent = role === 'user' ? 'You' : 'Assistant';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+
+            messageDiv.appendChild(label);
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            return messageDiv;
+        }
+
+        // Update message content
+        function updateMessageContent(messageElement, content) {
+            if (!messageElement) return;
+            const contentDiv = messageElement.querySelector('.message-content');
+            if (contentDiv) {
+                contentDiv.textContent = content;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Log event
+        function logEvent(type, eventType, data) {
+            const eventItem = document.createElement('div');
+            eventItem.className = `event-item ${type}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+            const typeLabel = type === 'outgoing' ? '📤 OUT' : type === 'incoming' ? '📥 IN' : '⚙️ SYS';
+
+            eventItem.innerHTML = `
+                <div class="event-timestamp">${timestamp}</div>
+                <div class="event-type">${typeLabel}: ${eventType}</div>
+                <div class="event-data">${JSON.stringify(data, null, 2)}</div>
+            `;
+
+            eventsList.insertBefore(eventItem, eventsList.firstChild);
+
+            // Limit to 100 events
+            while (eventsList.children.length > 100) {
+                eventsList.removeChild(eventsList.lastChild);
+            }
+        }
+
+        // Event listeners
+        sendBtn.addEventListener('click', sendMessage);
+        interruptBtn.addEventListener('click', sendInterrupt);
+        
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        clearEventsBtn.addEventListener('click', () => {
+            eventsList.innerHTML = '';
+            logEvent('system', 'Events Cleared', { action: 'All events cleared' });
+        });
+
+        // Connect on load
+        connect();
+    </script>
+</body>
+</html>
